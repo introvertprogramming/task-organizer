@@ -33,3 +33,13 @@ jobs:
         run: |
           pnpm exec cdk synth -c env=dev --quiet
           pnpm exec cdk synth -c env=prod --quiet
+      - name: Committed baseline template is up to date
+        working-directory: infra
+        env:
+          CDK_DISABLE_CLI_TELEMETRY: '1'
+        run: |
+          pnpm run synth:baseline
+          git diff --exit-code -- templates/ || {
+            echo "::error::Run 'pnpm --filter @task-organizer/infra synth:baseline' and commit the result."
+            exit 1
+          }

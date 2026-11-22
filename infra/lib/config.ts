@@ -60,3 +60,15 @@ export function getConfig(env: unknown): EnvConfig {
 export function tagsFor(config: EnvConfig): Record<string, string> {
   return { project: PROJECT, env: config.envName, 'managed-by': 'cdk' };
 }
+
+/** The only GitHub repository allowed to deploy into this AWS account. */
+export const GITHUB_REPO = 'introvertprogramming/task-organizer';
+
+/** Default CDK bootstrap qualifier – used to find the roles that do the actual deploying. */
+export const CDK_QUALIFIER = 'hnb659fds';
+
+/** Monthly budget (USD) and the alert thresholds. The stop action fires at the limit. */
+export const BUDGET = {
+  monthlyLimitUsd: 10,
+  alertThresholdsUsd: [1, 5, 10],
+} as const;

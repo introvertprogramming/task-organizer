@@ -7,7 +7,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "cdk": "cdk",
     "synth:dev": "cdk synth -c env=dev",
-    "synth:prod": "cdk synth -c env=prod"
+    "synth:prod": "cdk synth -c env=prod",
+    "synth:baseline": "cdk synth task-organizer-account-baseline --quiet && cp cdk.out/task-organizer-account-baseline.template.json templates/account-baseline.json"
   },
   "dependencies": {
     "aws-cdk-lib": "^2.278.0",
