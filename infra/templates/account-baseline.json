@@ -1,0 +1,501 @@
+{
+ "Description": "Budget alerts, automatic stop action and GitHub OIDC deploy role.",
+ "Parameters": {
+  "AlertEmail": {
+   "Type": "String",
+   "AllowedPattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$",
+   "ConstraintDescription": "Must be a valid email address.",
+   "Description": "Email address that receives budget alerts."
+  }
+ },
+ "Resources": {
+  "GitHubOidcProvider": {
+   "Type": "AWS::IAM::OIDCProvider",
+   "Properties": {
+    "ClientIdList": [
+     "sts.amazonaws.com"
+    ],
+    "Tags": [
+     {
+      "Key": "env",
+      "Value": "shared"
+     },
+     {
+      "Key": "managed-by",
+      "Value": "cdk"
+     },
+     {
+      "Key": "project",
+      "Value": "task-organizer"
+     }
+    ],
+    "Url": "https://token.actions.githubusercontent.com"
+   },
+   "Metadata": {
+    "aws:cdk:path": "task-organizer-account-baseline/GitHubOidcProvider"
+   }
+  },
+  "GitHubDeployRoleED73FD64": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRoleWithWebIdentity",
+       "Condition": {
+        "StringEquals": {
+         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+         "token.actions.githubusercontent.com:sub": [
+          "repo:introvertprogramming/task-organizer:environment:dev",
+          "repo:introvertprogramming/task-organizer:environment:prod"
+         ]
+        }
+       },
+       "Effect": "Allow",
+       "Principal": {
+        "Federated": {
+         "Fn::GetAtt": [
+          "GitHubOidcProvider",
+          "Arn"
+         ]
+        }
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Description": "Assumed by GitHub Actions in introvertprogramming/task-organizer (dev/prod environments only).",
+    "RoleName": "task-organizer-github-deploy",
+    "Tags": [
+     {
+      "Key": "env",
+      "Value": "shared"
+     },
+     {
+      "Key": "managed-by",
+      "Value": "cdk"
+     },
+     {
+      "Key": "project",
+      "Value": "task-organizer"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "task-organizer-account-baseline/GitHubDeployRole/Resource"
+   }
+  },
+  "GitHubDeployRoleDefaultPolicy26C27B56": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          "arn:aws:iam::",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          ":role/cdk-hnb659fds-*-role-",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          "-ap-south-1"
+         ]
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "GitHubDeployRoleDefaultPolicy26C27B56",
+    "Roles": [
+     {
+      "Ref": "GitHubDeployRoleED73FD64"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "task-organizer-account-baseline/GitHubDeployRole/DefaultPolicy/Resource"
+   }
+  },
+  "BudgetStopPolicy0249AF67": {
+   "Type": "AWS::IAM::ManagedPolicy",
+   "Properties": {
+    "Description": "Attached by AWS Budgets when the monthly limit is hit. Blocks deploys and new resources; deletes are still allowed. Detach manually once costs are understood.",
+    "ManagedPolicyName": "task-organizer-budget-stop",
+    "Path": "/",
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "cloudformation:CreateStack",
+        "cloudformation:UpdateStack",
+        "cloudformation:CreateChangeSet",
+        "cloudformation:ExecuteChangeSet"
+       ],
+       "Effect": "Deny",
+       "Resource": "*",
+       "Sid": "BlockDeploys"
+      },
+      {
+       "Action": [
+        "lambda:CreateFunction",
+        "lambda:UpdateFunctionCode",
+        "lambda:PutFunctionConcurrency",
+        "lambda:PutProvisionedConcurrencyConfig",
+        "dynamodb:CreateTable",
+        "s3:CreateBucket",
+        "cloudfront:CreateDistribution",
+        "apigateway:POST",
+        "apigateway:PUT",
+        "apigateway:PATCH",
+        "cognito-idp:CreateUserPool",
+        "ec2:RunInstances",
+        "ec2:CreateNatGateway",
+        "ec2:CreateVpc",
+        "rds:Create*",
+        "elasticloadbalancing:Create*",
+        "ecs:Create*",
+        "eks:Create*",
+        "elasticache:Create*",
+        "sagemaker:Create*"
+       ],
+       "Effect": "Deny",
+       "Resource": "*",
+       "Sid": "BlockNewResources"
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "task-organizer-account-baseline/BudgetStopPolicy/Resource"
+   }
+  },
+  "MonthlyBudget": {
+   "Type": "AWS::Budgets::Budget",
+   "Properties": {
+    "Budget": {
+     "BudgetLimit": {
+      "Amount": 10,
+      "Unit": "USD"
+     },
+     "BudgetName": "task-organizer-monthly",
+     "BudgetType": "COST",
+     "CostTypes": {
+      "IncludeCredit": false,
+      "IncludeRefund": false
+     },
+     "TimeUnit": "MONTHLY"
+    },
+    "NotificationsWithSubscribers": [
+     {
+      "Notification": {
+       "ComparisonOperator": "GREATER_THAN",
+       "NotificationType": "ACTUAL",
+       "Threshold": 1,
+       "ThresholdType": "ABSOLUTE_VALUE"
+      },
+      "Subscribers": [
+       {
+        "Address": {
+         "Ref": "AlertEmail"
+        },
+        "SubscriptionType": "EMAIL"
+       }
+      ]
+     },
+     {
+      "Notification": {
+       "ComparisonOperator": "GREATER_THAN",
+       "NotificationType": "ACTUAL",
+       "Threshold": 5,
+       "ThresholdType": "ABSOLUTE_VALUE"
+      },
+      "Subscribers": [
+       {
+        "Address": {
+         "Ref": "AlertEmail"
+        },
+        "SubscriptionType": "EMAIL"
+       }
+      ]
+     },
+     {
+      "Notification": {
+       "ComparisonOperator": "GREATER_THAN",
+       "NotificationType": "ACTUAL",
+       "Threshold": 10,
+       "ThresholdType": "ABSOLUTE_VALUE"
+      },
+      "Subscribers": [
+       {
+        "Address": {
+         "Ref": "AlertEmail"
+        },
+        "SubscriptionType": "EMAIL"
+       }
+      ]
+     },
+     {
+      "Notification": {
+       "ComparisonOperator": "GREATER_THAN",
+       "NotificationType": "FORECASTED",
+       "Threshold": 10,
+       "ThresholdType": "ABSOLUTE_VALUE"
+      },
+      "Subscribers": [
+       {
+        "Address": {
+         "Ref": "AlertEmail"
+        },
+        "SubscriptionType": "EMAIL"
+       }
+      ]
+     }
+    ],
+    "ResourceTags": [
+     {
+      "Key": "env",
+      "Value": "shared"
+     },
+     {
+      "Key": "managed-by",
+      "Value": "cdk"
+     },
+     {
+      "Key": "project",
+      "Value": "task-organizer"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "task-organizer-account-baseline/MonthlyBudget"
+   }
+  },
+  "BudgetsActionRoleCD1482F5": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Condition": {
+        "StringEquals": {
+         "aws:SourceAccount": {
+          "Ref": "AWS::AccountId"
+         }
+        }
+       },
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "budgets.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "RoleName": "task-organizer-budgets-action",
+    "Tags": [
+     {
+      "Key": "env",
+      "Value": "shared"
+     },
+     {
+      "Key": "managed-by",
+      "Value": "cdk"
+     },
+     {
+      "Key": "project",
+      "Value": "task-organizer"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "task-organizer-account-baseline/BudgetsActionRole/Resource"
+   }
+  },
+  "BudgetsActionPolicy168969C5": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": [
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy"
+       ],
+       "Condition": {
+        "ArnEquals": {
+         "iam:PolicyARN": {
+          "Ref": "BudgetStopPolicy0249AF67"
+         }
+        }
+       },
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:aws:iam::",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           ":role/",
+           {
+            "Ref": "GitHubDeployRoleED73FD64"
+           }
+          ]
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:aws:iam::",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           ":role/cdk-hnb659fds-deploy-role-",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           "-ap-south-1"
+          ]
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           "arn:aws:iam::",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           ":role/cdk-hnb659fds-cfn-exec-role-",
+           {
+            "Ref": "AWS::AccountId"
+           },
+           "-ap-south-1"
+          ]
+         ]
+        }
+       ]
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "BudgetsActionPolicy168969C5",
+    "Roles": [
+     {
+      "Ref": "BudgetsActionRoleCD1482F5"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "task-organizer-account-baseline/BudgetsActionPolicy/Resource"
+   }
+  },
+  "StopOnBudgetExceeded": {
+   "Type": "AWS::Budgets::BudgetsAction",
+   "Properties": {
+    "ActionThreshold": {
+     "Type": "ABSOLUTE_VALUE",
+     "Value": 10
+    },
+    "ActionType": "APPLY_IAM_POLICY",
+    "ApprovalModel": "AUTOMATIC",
+    "BudgetName": {
+     "Ref": "MonthlyBudget"
+    },
+    "Definition": {
+     "IamActionDefinition": {
+      "PolicyArn": {
+       "Ref": "BudgetStopPolicy0249AF67"
+      },
+      "Roles": [
+       {
+        "Ref": "GitHubDeployRoleED73FD64"
+       },
+       {
+        "Fn::Join": [
+         "",
+         [
+          "cdk-hnb659fds-deploy-role-",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          "-ap-south-1"
+         ]
+        ]
+       },
+       {
+        "Fn::Join": [
+         "",
+         [
+          "cdk-hnb659fds-cfn-exec-role-",
+          {
+           "Ref": "AWS::AccountId"
+          },
+          "-ap-south-1"
+         ]
+        ]
+       }
+      ]
+     }
+    },
+    "ExecutionRoleArn": {
+     "Fn::GetAtt": [
+      "BudgetsActionRoleCD1482F5",
+      "Arn"
+     ]
+    },
+    "NotificationType": "ACTUAL",
+    "ResourceTags": [
+     {
+      "Key": "env",
+      "Value": "shared"
+     },
+     {
+      "Key": "managed-by",
+      "Value": "cdk"
+     },
+     {
+      "Key": "project",
+      "Value": "task-organizer"
+     }
+    ],
+    "Subscribers": [
+     {
+      "Address": {
+       "Ref": "AlertEmail"
+      },
+      "Type": "EMAIL"
+     }
+    ]
+   },
+   "DependsOn": [
+    "BudgetsActionPolicy168969C5"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "task-organizer-account-baseline/StopOnBudgetExceeded"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/1WMzQrCMBCEn6X3dJWI6FXrxYNY6gPIttmW7U8CSdoiJe8upqB4mo+PmZEgD0fYJji7tFJd2nMJy8Nj1Yms1jlaHMiTFTi758I4wJLV+n69ZLk1EyuyojA9fboxc9Nz9YrTlW6osSH1838iiHJUDXkXb8+RxZfcqfJsdAhBaKMIWreZpAS5g33SOubUjtrzQFCs+QY11NT8zAAAAA=="
+   },
+   "Metadata": {
+    "aws:cdk:path": "task-organizer-account-baseline/CDKMetadata/Default"
+   }
+  }
+ }
+}
